@@ -1,0 +1,896 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>感測器佈建視覺化</title>
+<style>
+  :root {
+    box-sizing: border-box;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    --bg: #F3F5F9;
+    --panel: #FFFFFF;
+    --panel-2: #FAFBFD;
+    --text: #12161F;
+    --text-dim: #5B6472;
+    --text-faint: #8792A3;
+    --border: #DCE2EB;
+    --border-strong: #C3CBDA;
+    --accent: #0E8F89;
+    --accent-ink: #0B6E69;
+    --sensor: #16202E;
+    --sink: #2159C7;
+    --danger: #D2455C;
+    --grid-empty: #EBEEF3;
+    --shadow: 0 10px 30px rgba(20, 30, 50, 0.10);
+  }
+  html { scroll-padding-top: env(safe-area-inset-top, 0px); }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0A0E16;
+      --panel: #121826;
+      --panel-2: #0E1420;
+      --text: #E9EDF5;
+      --text-dim: #A0AABC;
+      --text-faint: #6C7689;
+      --border: #232C3D;
+      --border-strong: #313C52;
+      --accent: #2FD8CE;
+      --accent-ink: #7FF3EA;
+      --sensor: #F5F7FB;
+      --sink: #6FA0FF;
+      --danger: #FF6B7F;
+      --grid-empty: #161D2B;
+      --shadow: 0 10px 34px rgba(0,0,0,0.45);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0A0E16; --panel: #121826; --panel-2: #0E1420; --text: #E9EDF5;
+    --text-dim: #A0AABC; --text-faint: #6C7689; --border: #232C3D; --border-strong: #313C52;
+    --accent: #2FD8CE; --accent-ink: #7FF3EA; --sensor: #F5F7FB; --sink: #6FA0FF;
+    --danger: #FF6B7F; --grid-empty: #161D2B; --shadow: 0 10px 34px rgba(0,0,0,0.45);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, "Segoe UI", "PingFang TC", "Microsoft JhengHei", Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 28px 20px 60px;
+  }
+  header.top {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 12px;
+    margin-bottom: 22px;
+  }
+  .eyebrow {
+    font-size: 12.5px;
+    letter-spacing: 0.03em;
+    color: var(--accent);
+    font-weight: 600;
+    margin-bottom: 6px;
+  }
+  h1 {
+    font-size: clamp(22px, 3vw, 30px);
+    margin: 0 0 6px;
+    letter-spacing: -0.01em;
+  }
+  .sub {
+    color: var(--text-dim);
+    font-size: 14px;
+    max-width: 580px;
+    line-height: 1.55;
+  }
+  .cite {
+    font-size: 12px;
+    color: var(--text-faint);
+    text-align: right;
+    line-height: 1.5;
+  }
+
+  .layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 340px;
+    gap: 22px;
+    align-items: start;
+  }
+  @media (max-width: 880px) {
+    .layout { grid-template-columns: 1fr; }
+  }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    box-shadow: var(--shadow);
+    padding: 18px;
+  }
+
+  /* ---------- grid ---------- */
+  .grid-card { padding: 20px; }
+
+  .size-control {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 12px 14px;
+    margin-bottom: 14px;
+  }
+  .size-control .size-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .size-control .size-name {
+    font-size: 12.5px;
+    color: var(--text-dim);
+    font-weight: 600;
+  }
+  .size-control .size-hint {
+    font-size: 11.5px;
+    color: var(--text-faint);
+  }
+  .size-inputs {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .size-inputs input[type="range"] {
+    flex: 1 1 auto;
+    accent-color: var(--accent);
+  }
+  .size-readout {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex: 0 0 auto;
+    font-variant-numeric: tabular-nums;
+  }
+  .size-readout input[type="number"] {
+    width: 56px;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    text-align: center;
+    padding: 5px 4px;
+    border-radius: 8px;
+    border: 1px solid var(--border-strong);
+    background: var(--panel);
+    color: var(--text);
+  }
+  .size-readout span.mult {
+    color: var(--text-faint);
+    font-size: 13px;
+  }
+
+  .grid-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 14px;
+    align-items: center;
+  }
+  button.btn {
+    font: inherit;
+    font-size: 13px;
+    padding: 8px 13px;
+    border-radius: 9px;
+    border: 1px solid var(--border-strong);
+    background: var(--panel-2);
+    color: var(--text);
+    cursor: pointer;
+    transition: border-color .15s ease, background .15s ease;
+  }
+  button.btn:hover { border-color: var(--accent); }
+  button.btn.primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #06201E;
+    font-weight: 600;
+  }
+  button.btn.active {
+    background: var(--sink);
+    border-color: var(--sink);
+    color: #fff;
+    font-weight: 600;
+  }
+  button.btn.ghost { background: transparent; }
+  .spacer { flex: 1 1 auto; }
+
+  .grid-outer {
+    position: relative;
+    width: 100%;
+    max-width: 560px;
+    margin: 0 auto;
+    aspect-ratio: 1 / 1;
+  }
+  #grid {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    display: grid;
+    gap: 2px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    font-size: 11px;
+  }
+  .cell {
+    position: relative;
+    background: var(--grid-empty);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    user-select: none;
+    font-variant-numeric: tabular-nums;
+    font-size: inherit;
+    color: var(--text-dim);
+    transition: outline-color .1s ease;
+  }
+  .cell.fail-mark::before {
+    content: "";
+    position: absolute;
+    top: 2px; right: 2px;
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: var(--danger);
+  }
+  .cell:hover { outline: 2px solid var(--accent); outline-offset: -2px; z-index: 2; }
+  .cell .val { pointer-events: none; font-weight: 500; }
+  .cell.sensor .val { display: none; }
+  .marker {
+    width: 55%;
+    height: 55%;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+  }
+  .marker.sensor-dot { background: var(--sensor); box-shadow: 0 0 0 3px rgba(255,255,255,0.35) inset; }
+  .marker.sensor-dot.isolated { background: var(--danger); }
+  .marker.sink-dot {
+    background: var(--sink);
+    border-radius: 4px;
+    width: 46%;
+    height: 46%;
+  }
+  svg#lines {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+  }
+
+  .legend {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 16px;
+    font-size: 12px;
+    color: var(--text-dim);
+  }
+  .legend-bar {
+    flex: 1 1 auto;
+    height: 10px;
+    border-radius: 6px;
+    background: linear-gradient(90deg, #C7CEDB 0%, #2FB6B0 28%, #F2C94C 58%, #F08A3C 78%, #D2455C 100%);
+  }
+
+  .mode-note {
+    font-size: 12.5px;
+    color: var(--text-dim);
+    margin-top: 10px;
+    min-height: 18px;
+  }
+  .mode-note b { color: var(--sink); }
+
+  /* ---------- sidebar ---------- */
+  .side { display: flex; flex-direction: column; gap: 16px; }
+  .side h2 {
+    font-size: 13px;
+    margin: 0 0 12px;
+    color: var(--text-dim);
+    font-weight: 600;
+    letter-spacing: 0.01em;
+  }
+
+  .stat-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 4px;
+  }
+  .stat {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 11px;
+    padding: 11px 12px;
+  }
+  .stat .num {
+    font-size: 21px;
+    font-weight: 700;
+    line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+  }
+  .stat .num.ok { color: var(--accent-ink); }
+  .stat .num.warn { color: var(--danger); }
+  .stat .lbl { font-size: 11.5px; color: var(--text-faint); margin-top: 3px; }
+
+  .field { margin-bottom: 14px; }
+  .field:last-child { margin-bottom: 0; }
+  .field label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12.5px;
+    color: var(--text-dim);
+    margin-bottom: 6px;
+  }
+  .field label span.v { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+  input[type="range"] {
+    width: 100%;
+    accent-color: var(--accent);
+  }
+
+  .breakdown {
+    font-size: 12.5px;
+    color: var(--text-dim);
+    line-height: 1.6;
+  }
+  .breakdown .head {
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 6px;
+    font-size: 13px;
+  }
+  .breakdown table { width: 100%; border-collapse: collapse; margin: 8px 0; }
+  .breakdown td { padding: 3px 0; font-variant-numeric: tabular-nums; }
+  .breakdown td.dist { color: var(--text-faint); text-align: right; }
+  .breakdown .result {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px dashed var(--border-strong);
+    font-weight: 700;
+    color: var(--text);
+    font-size: 14px;
+  }
+  .breakdown .empty { color: var(--text-faint); font-style: italic; }
+  code.f {
+    font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    padding: 1px 5px;
+    border-radius: 5px;
+    font-size: 12px;
+  }
+
+  footer {
+    margin-top: 30px;
+    text-align: center;
+    font-size: 12px;
+    color: var(--text-faint);
+  }
+
+  @media (max-width: 460px) {
+    .stat .num { font-size: 18px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <div>
+      <div class="eyebrow">依論文偵測模型即時運算</div>
+      <h1>感測器佈建視覺化</h1>
+      <div class="sub">點格子放攝影機，看每個角落的偵測機率 Pg 怎麼被算出來。地圖大小可自由調整（2×2 ～ 50×50，論文原始地圖即為 50×50）。滑鼠移到任一格，右側會列出這一格的完整計算過程。</div>
+    </div>
+    <div class="cite">Eq.(1) 單一感測器偵測機率<br>Eq.(3) 多感測器機率合成<br>Kuo, Chou &amp; Chen, Computer Networks 117 (2017)</div>
+  </header>
+
+  <div class="layout">
+
+    <!-- GRID -->
+    <div class="panel grid-card">
+
+      <div class="size-control">
+        <div class="size-top">
+          <span class="size-name">地圖大小（Section 6：論文原始地圖為 50×50 units, 1 km²）</span>
+          <span class="size-hint">拖曳滑桿，或直接輸入格數</span>
+        </div>
+        <div class="size-inputs">
+          <input type="range" id="rSize" min="2" max="50" step="1" value="10">
+          <div class="size-readout">
+            <input type="number" id="nSize" min="2" max="50" step="1" value="10">
+            <span class="mult">× <span id="nSizeEcho">10</span></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid-toolbar">
+        <button class="btn primary" id="btnClear">清空感測器</button>
+        <button class="btn" id="btnPreset" title="會自動把地圖切回 10×10，再套用論文範例位置">還原論文 Fig.5(a)</button>
+        <button class="btn" id="btnSink">📍 移動 Sink</button>
+        <div class="spacer"></div>
+        <button class="btn ghost" id="btnFail">未達標標記：開</button>
+      </div>
+
+      <div class="grid-outer">
+        <div id="grid"></div>
+        <svg id="lines" preserveAspectRatio="none"></svg>
+      </div>
+
+      <div class="legend">
+        <span>0.0</span>
+        <div class="legend-bar"></div>
+        <span>1.0　Pg</span>
+      </div>
+      <div class="mode-note" id="modeNote">點任一格放置／移除攝影機　·　黑點 = 攝影機　·　<b style="color:var(--sink)">藍方塊</b> = Sink（訊號要傳回這裡）</div>
+    </div>
+
+    <!-- SIDEBAR -->
+    <div class="side">
+
+      <div class="panel">
+        <h2>目前狀態</h2>
+        <div class="stat-row">
+          <div class="stat">
+            <div class="num" id="statSensors">0</div>
+            <div class="lbl">感測器數量</div>
+          </div>
+          <div class="stat">
+            <div class="num" id="statSat">0%</div>
+            <div class="lbl">達標格點（Pg ≥ Tg）</div>
+          </div>
+        </div>
+        <div class="stat-row">
+          <div class="stat">
+            <div class="num" id="statAvg">0.00</div>
+            <div class="lbl">平均 Pg</div>
+          </div>
+          <div class="stat">
+            <div class="num" id="statCC">—</div>
+            <div class="lbl">連通狀態 |CC|</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>偵測模型參數 · Eq.(1)</h2>
+        <div class="field">
+          <label>信心半徑 R<sub>con</sub> <span class="v" id="vRcon">1.41</span></label>
+          <input type="range" id="rRcon" min="0.5" max="4" step="0.01" value="1.414">
+        </div>
+        <div class="field">
+          <label>最大半徑 R<sub>max</sub> <span class="v" id="vRmax">5.0</span></label>
+          <input type="range" id="rRmax" min="1" max="20" step="0.1" value="5">
+        </div>
+        <div class="field">
+          <label>α（信心圓內偵測率） <span class="v" id="vAlpha">1.00</span></label>
+          <input type="range" id="rAlpha" min="0.3" max="1" step="0.01" value="1">
+        </div>
+        <div class="field">
+          <label>β（機率隨距離衰減速度） <span class="v" id="vBeta">1.0</span></label>
+          <input type="range" id="rBeta" min="0.5" max="3" step="0.1" value="1">
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>限制式門檻</h2>
+        <div class="field">
+          <label>偵測門檻 T<sub>g</sub> <span class="v" id="vTg">0.30</span></label>
+          <input type="range" id="rTg" min="0" max="1" step="0.01" value="0.3">
+        </div>
+        <div class="field">
+          <label>傳輸半徑 R<sub>t</sub>（連通性用） <span class="v" id="vRt">5.0</span></label>
+          <input type="range" id="rRt" min="1" max="20" step="0.1" value="5">
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2 id="bdTitle">這一格是怎麼算出來的</h2>
+        <div class="breakdown" id="breakdown">
+          <div class="empty">滑鼠移到格子上，看 Pg 的完整計算過程。</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <footer>格點座標採論文慣例（1–N，N 為目前地圖邊長）。連通性判斷：感測器與感測器、感測器與 Sink 之間，距離 ≤ Rt 視為可通訊一跳，用來估算 |CC|（僅供教學示意，非論文原始拓撲演算法）。</footer>
+</div>
+
+<script>
+(function () {
+  let N = 10;
+  const grid = document.getElementById('grid');
+  const svgLines = document.getElementById('lines');
+  let cells = [];
+  let sensors = new Set();       // "r,c" 1..N
+  let sink = { r: 5, c: 5 };
+  let sinkMode = false;
+  let showFail = true;
+
+  const rSize = document.getElementById('rSize');
+  const nSize = document.getElementById('nSize');
+  const nSizeEcho = document.getElementById('nSizeEcho');
+
+  function key(r, c) { return r + ',' + c; }
+
+  // ---- build / rebuild grid DOM for current N ----
+  function buildGrid() {
+    grid.innerHTML = '';
+    cells = [];
+    grid.style.gridTemplateColumns = `repeat(${N}, 1fr)`;
+    grid.style.gridTemplateRows = `repeat(${N}, 1fr)`;
+    svgLines.setAttribute('viewBox', `0 0 ${N} ${N}`);
+
+    // scale font size down as the grid gets denser so text never overflows a cell
+    const approxCellPx = 560 / N;
+    const fontPx = Math.max(5.5, Math.min(11, approxCellPx * 0.34));
+    grid.style.fontSize = fontPx.toFixed(1) + 'px';
+
+    for (let r = 1; r <= N; r++) {
+      for (let c = 1; c <= N; c++) {
+        const cell = document.createElement('div');
+        cell.className = 'cell';
+        cell.dataset.r = r;
+        cell.dataset.c = c;
+        const val = document.createElement('div');
+        val.className = 'val';
+        cell.appendChild(val);
+        cell.addEventListener('click', () => onCellClick(r, c));
+        cell.addEventListener('mouseenter', () => showBreakdown(r, c));
+        grid.appendChild(cell);
+        cells.push(cell);
+      }
+    }
+  }
+
+  // above roughly this many cells per side, per-cell numbers get too small to read —
+  // keep the color coding but stop printing digits (hover breakdown still works)
+  function numberPrecision() {
+    if (N <= 14) return 2;
+    if (N <= 26) return 1;
+    return null;
+  }
+
+  function onCellClick(r, c) {
+    if (sinkMode) {
+      sink = { r, c };
+      sinkMode = false;
+      updateToolbarState();
+      recompute();
+      return;
+    }
+    const k = key(r, c);
+    if (k === key(sink.r, sink.c)) return; // can't place sensor on sink
+    if (sensors.has(k)) sensors.delete(k);
+    else sensors.add(k);
+    recompute();
+  }
+
+  // ---- map size control ----
+  function clampCoords() {
+    // drop any sensors that fell outside the new bounds
+    const kept = new Set();
+    sensors.forEach(k => {
+      const [r, c] = k.split(',').map(Number);
+      if (r <= N && c <= N) kept.add(k);
+    });
+    sensors = kept;
+    // clamp sink into bounds
+    sink = { r: Math.min(sink.r, N), c: Math.min(sink.c, N) };
+  }
+
+  function applySize(newN) {
+    if (Number.isNaN(newN)) newN = N;
+    newN = Math.max(2, Math.min(50, Math.round(newN)));
+    N = newN;
+    rSize.value = N;
+    nSize.value = N;
+    nSizeEcho.textContent = N;
+    clampCoords();
+    buildGrid();
+    recompute();
+  }
+
+  rSize.addEventListener('input', () => applySize(parseInt(rSize.value, 10)));
+  // listen on 'input' (not just 'change') so typing or using the spinner updates the
+  // grid immediately, without waiting for the field to lose focus
+  nSize.addEventListener('input', () => {
+    const v = parseInt(nSize.value, 10);
+    if (!Number.isNaN(v)) applySize(v);
+  });
+  nSize.addEventListener('change', () => applySize(parseInt(nSize.value, 10)));
+  nSize.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { applySize(parseInt(nSize.value, 10)); nSize.blur(); }
+  });
+
+  // ---- params ----
+  const params = { Rcon: 1.414, Rmax: 5, alpha: 1, beta: 1, Tg: 0.3, Rt: 5 };
+  function bindSlider(id, key, vId, fmt) {
+    const el = document.getElementById(id);
+    const vEl = document.getElementById(vId);
+    el.addEventListener('input', () => {
+      params[key] = parseFloat(el.value);
+      vEl.textContent = fmt(params[key]);
+      recompute();
+    });
+    vEl.textContent = fmt(params[key]);
+  }
+  bindSlider('rRcon', 'Rcon', 'vRcon', v => v.toFixed(2));
+  bindSlider('rRmax', 'Rmax', 'vRmax', v => v.toFixed(1));
+  bindSlider('rAlpha', 'alpha', 'vAlpha', v => v.toFixed(2));
+  bindSlider('rBeta', 'beta', 'vBeta', v => v.toFixed(1));
+  bindSlider('rTg', 'Tg', 'vTg', v => v.toFixed(2));
+  bindSlider('rRt', 'Rt', 'vRt', v => v.toFixed(1));
+
+  // ---- math: Eq (1) & Eq (3) ----
+  function dist(r1, c1, r2, c2) {
+    return Math.hypot(r1 - r2, c1 - c2);
+  }
+  function psg(d) {
+    if (d <= params.Rcon) return params.alpha;
+    if (d <= params.Rmax) return 1 / Math.pow(d, params.beta);
+    return 0;
+  }
+  function pg(r, c) {
+    let prodMiss = 1;
+    let contributors = [];
+    sensors.forEach(k => {
+      const [sr, sc] = k.split(',').map(Number);
+      const d = dist(r, c, sr, sc);
+      const p = psg(d);
+      if (p > 0) {
+        prodMiss *= (1 - p);
+        contributors.push({ r: sr, c: sc, d, p });
+      }
+    });
+    contributors.sort((a, b) => a.d - b.d);
+    return { value: 1 - prodMiss, contributors };
+  }
+
+  // ---- color scale ----
+  function lerp(a, b, t) { return a + (b - a) * t; }
+  function hexToRgb(h) {
+    const n = parseInt(h.slice(1), 16);
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  }
+  function rgbToHex(rgb) {
+    return '#' + rgb.map(v => Math.round(v).toString(16).padStart(2, '0')).join('');
+  }
+  const stops = [
+    [0.00, '#C7CEDB'],
+    [0.28, '#2FB6B0'],
+    [0.58, '#F2C94C'],
+    [0.78, '#F08A3C'],
+    [1.00, '#D2455C']
+  ];
+  function colorFor(v) {
+    v = Math.max(0, Math.min(1, v));
+    for (let i = 0; i < stops.length - 1; i++) {
+      const [t0, c0] = stops[i], [t1, c1] = stops[i + 1];
+      if (v >= t0 && v <= t1) {
+        const t = t1 === t0 ? 0 : (v - t0) / (t1 - t0);
+        return rgbToHex(hexToRgb(c0).map((v0, idx) => lerp(v0, hexToRgb(c1)[idx], t)));
+      }
+    }
+    return stops[stops.length - 1][1];
+  }
+  function luminance(hex) {
+    const [r, g, b] = hexToRgb(hex);
+    return (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  }
+
+  // ---- connectivity ----
+  function computeConnectivity() {
+    const nodes = Array.from(sensors).map(k => {
+      const [r, c] = k.split(',').map(Number);
+      return { key: k, r, c };
+    });
+    nodes.push({ key: 'SINK', r: sink.r, c: sink.c });
+    const n = nodes.length;
+    const adj = Array.from({ length: n }, () => []);
+    for (let i = 0; i < n; i++) {
+      for (let j = i + 1; j < n; j++) {
+        const d = dist(nodes[i].r, nodes[i].c, nodes[j].r, nodes[j].c);
+        if (d <= params.Rt) { adj[i].push(j); adj[j].push(i); }
+      }
+    }
+    const visited = new Array(n).fill(false);
+    const compOf = new Array(n).fill(-1);
+    let compCount = 0;
+    for (let i = 0; i < n; i++) {
+      if (visited[i]) continue;
+      const queue = [i]; visited[i] = true; compOf[i] = compCount;
+      while (queue.length) {
+        const u = queue.shift();
+        adj[u].forEach(v => { if (!visited[v]) { visited[v] = true; compOf[v] = compCount; queue.push(v); } });
+      }
+      compCount++;
+    }
+    const sinkIdx = n - 1;
+    const sinkComp = compOf[sinkIdx];
+    const isolated = new Set();
+    nodes.forEach((node, idx) => { if (idx !== sinkIdx && compOf[idx] !== sinkComp) isolated.add(node.key); });
+    const edges = [];
+    for (let i = 0; i < n; i++) for (const j of adj[i]) if (j > i) edges.push([nodes[i], nodes[j]]);
+    return { compCount, isolated, edges, sensorCount: nodes.length - 1 };
+  }
+
+  // ---- render ----
+  function recompute() {
+    const prec = numberPrecision();
+    let total = 0, pass = 0, count = 0;
+    cells.forEach(cell => {
+      const r = +cell.dataset.r, c = +cell.dataset.c;
+      const k = key(r, c);
+      const isSensor = sensors.has(k);
+      const isSink = (r === sink.r && c === sink.c);
+      const valEl = cell.querySelector('.val');
+
+      cell.classList.toggle('sensor', isSensor);
+      cell.classList.toggle('fail-mark', false);
+
+      let existingMarker = cell.querySelector('.marker');
+      if (existingMarker) existingMarker.remove();
+
+      if (isSink) {
+        cell.style.background = 'var(--grid-empty)';
+        valEl.textContent = '';
+        const m = document.createElement('div');
+        m.className = 'marker sink-dot';
+        cell.appendChild(m);
+      } else if (isSensor) {
+        cell.style.background = 'var(--grid-empty)';
+        valEl.textContent = '';
+        const m = document.createElement('div');
+        m.className = 'marker sensor-dot';
+        cell.appendChild(m);
+      } else {
+        const res = pg(r, c);
+        cell.style.background = colorFor(res.value);
+        valEl.style.color = luminance(colorFor(res.value)) > 0.6 ? '#12161F' : '#FFFFFF';
+        valEl.textContent = prec === null ? '' : res.value.toFixed(prec);
+        total += res.value; count++;
+        if (res.value >= params.Tg) pass++;
+        if (showFail && res.value < params.Tg) cell.classList.add('fail-mark');
+      }
+    });
+
+    // connectivity
+    const conn = computeConnectivity();
+    sensors.forEach(k => {
+      const [r, c] = k.split(',').map(Number);
+      const cellEl = cells.find(el => +el.dataset.r === r && +el.dataset.c === c);
+      const dot = cellEl && cellEl.querySelector('.sensor-dot');
+      if (dot) dot.classList.toggle('isolated', conn.isolated.has(k));
+    });
+
+    // lines
+    svgLines.innerHTML = '';
+    const strokeW = Math.max(0.02, N * 0.006);
+    conn.edges.forEach(([a, b]) => {
+      const isIsolatedEdge = conn.isolated.has(a.key) || conn.isolated.has(b.key);
+      const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      line.setAttribute('x1', a.c - 0.5);
+      line.setAttribute('y1', a.r - 0.5);
+      line.setAttribute('x2', b.c - 0.5);
+      line.setAttribute('y2', b.r - 0.5);
+      line.setAttribute('stroke', isIsolatedEdge ? 'var(--danger)' : 'var(--accent)');
+      line.setAttribute('stroke-width', strokeW.toFixed(3));
+      line.setAttribute('stroke-opacity', '0.55');
+      svgLines.appendChild(line);
+    });
+
+    // stats
+    document.getElementById('statSensors').textContent = sensors.size;
+    const satPct = count ? Math.round((pass / count) * 100) : 0;
+    const satEl = document.getElementById('statSat');
+    satEl.textContent = satPct + '%';
+    satEl.className = 'num ' + (satPct === 100 ? 'ok' : (satPct < 60 ? 'warn' : ''));
+    document.getElementById('statAvg').textContent = count ? (total / count).toFixed(2) : '0.00';
+
+    const ccEl = document.getElementById('statCC');
+    if (sensors.size === 0) {
+      ccEl.textContent = '—';
+      ccEl.className = 'num';
+    } else if (conn.isolated.size === 0) {
+      ccEl.textContent = '1';
+      ccEl.className = 'num ok';
+    } else {
+      ccEl.textContent = (conn.compCount) + '';
+      ccEl.className = 'num warn';
+    }
+  }
+
+  function showBreakdown(r, c) {
+    const box = document.getElementById('breakdown');
+    const title = document.getElementById('bdTitle');
+    const k = key(r, c);
+    if (r === sink.r && c === sink.c) {
+      title.textContent = `格點 (${r}, ${c}) — 這是 Sink`;
+      box.innerHTML = `<div class="empty">所有感測器的訊號，最終都要能接力傳到這一格。</div>`;
+      return;
+    }
+    if (sensors.has(k)) {
+      title.textContent = `格點 (${r}, ${c}) — 這裡放了攝影機`;
+      box.innerHTML = `<div>此格在自己的信心圓內，依 Eq.(1)：<br><code class="f">‖sg‖ = 0 ≤ R_con → Ps_g = α = ${params.alpha.toFixed(2)}</code></div>
+        <div class="result">Pg = ${params.alpha.toFixed(2)}</div>`;
+      return;
+    }
+    const res = pg(r, c);
+    title.textContent = `格點 (${r}, ${c}) 的 Pg 怎麼來的`;
+    if (res.contributors.length === 0) {
+      box.innerHTML = `<div class="empty">目前沒有任何攝影機的範圍蓋到這一格（超出所有感測器的 R_max）→ Pg = 0</div>`;
+      return;
+    }
+    let rows = res.contributors.map(ct => {
+      const zone = ct.d <= params.Rcon ? '信心圓內' : '衰減區';
+      return `<tr>
+        <td>感測器 (${ct.r},${ct.c})</td>
+        <td class="dist">d=${ct.d.toFixed(2)}</td>
+        <td class="dist">${zone}</td>
+        <td class="dist">Ps_g=${ct.p.toFixed(3)}</td>
+      </tr>`;
+    }).join('');
+    const missTerms = res.contributors.map(ct => `(1−${ct.p.toFixed(2)})`).join('×');
+    box.innerHTML = `
+      <div>依 Eq.(1) 算出每台感測器對這一格的機率，再用 Eq.(3) 合成：</div>
+      <table>${rows}</table>
+      <div>都沒偵測到 = ${missTerms} = ${(res.contributors.reduce((acc, ct) => acc * (1 - ct.p), 1)).toFixed(3)}</div>
+      <div class="result">Pg = 1 − 上式 = ${res.value.toFixed(3)} ${res.value >= params.Tg ? '　✓ 達標' : '　✕ 未達標 T_g=' + params.Tg.toFixed(2)}</div>
+    `;
+  }
+
+  // ---- toolbar ----
+  document.getElementById('btnClear').addEventListener('click', () => { sensors.clear(); recompute(); });
+  document.getElementById('btnPreset').addEventListener('click', () => {
+    applySize(10);
+    sink = { r: 5, c: 5 };
+    sensors = new Set(['3,3', '3,8', '8,3', '8,8']);
+    params.Tg = 0.3; document.getElementById('rTg').value = 0.3; document.getElementById('vTg').textContent = '0.30';
+    recompute();
+  });
+  const btnSink = document.getElementById('btnSink');
+  btnSink.addEventListener('click', () => {
+    sinkMode = !sinkMode;
+    updateToolbarState();
+  });
+  function updateToolbarState() {
+    btnSink.classList.toggle('active', sinkMode);
+    document.getElementById('modeNote').innerHTML = sinkMode
+      ? '點任一格，把 <b style="color:var(--sink)">Sink</b> 移過去（再按一次「移動 Sink」可取消）'
+      : '點任一格放置／移除攝影機　·　黑點 = 攝影機　·　<b style="color:var(--sink)">藍方塊</b> = Sink（訊號要傳回這裡）';
+  }
+  const btnFail = document.getElementById('btnFail');
+  btnFail.addEventListener('click', () => {
+    showFail = !showFail;
+    btnFail.textContent = '未達標標記：' + (showFail ? '開' : '關');
+    recompute();
+  });
+
+  // ---- init ----
+  buildGrid();
+  recompute();
+})();
+</script>
+</body>
+</html>
