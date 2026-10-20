@@ -424,11 +424,9 @@
 
   <header class="top">
     <div>
-      <div class="eyebrow">依論文偵測模型即時運算</div>
       <h1>感測器佈建視覺化</h1>
-      <div class="sub">點格子放攝影機，看每個角落的偵測機率 Pg 怎麼被算出來。地圖範圍可自由調整為 m×n（可手動點格子，也可按右側「自動最佳化」讓 C 後端依論文 QTSwE 演算法算出最少感測器擺法）。滑鼠移到任一格，右側會列出這一格的完整計算過程。</div>
+      <div class="sub">在格子上放置感測器，查看每格的偵測機率 Pg；或輸入 m×n 範圍，由後端自動計算最少感測器的擺法。</div>
     </div>
-    <div class="cite">Eq.(1) 單一感測器偵測機率<br>Eq.(3) 多感測器機率合成<br>Kuo, Chou &amp; Chen, Computer Networks 117 (2017)</div>
   </header>
 
   <div class="layout">
@@ -439,7 +437,7 @@
       <div class="size-control">
         <div class="size-top">
           <span class="size-name">地圖範圍 m × n（論文原始地圖為 50×50 units, 1 km²）</span>
-          <span class="size-hint">滑桿＝正方形 2–50；或直接輸入 列 × 行（最大 1000×1000，超過 50 會改用總覽畫布）</span>
+          <span class="size-hint">滑桿為正方形（2–50），或輸入 列 × 行</span>
         </div>
         <div class="size-inputs">
           <input type="range" id="rSize" min="2" max="50" step="1" value="10">
@@ -454,7 +452,7 @@
       <div class="grid-toolbar">
         <button class="btn primary" id="btnClear">清空感測器</button>
         <button class="btn" id="btnPreset" title="會自動把地圖切回 10×10，再套用論文範例位置">還原論文 Fig.5(a)</button>
-        <button class="btn" id="btnSink">📍 移動 Sink</button>
+        <button class="btn" id="btnSink">移動 Sink</button>
         <div class="spacer"></div>
         <button class="btn ghost" id="btnFail">未達標標記：開</button>
       </div>
@@ -499,11 +497,11 @@
             <label>世代 <input type="number" id="optGens" value="500" min="1"></label>
           </div>
           <div class="opt-row">
-            <label>時間上限(秒) <input type="number" id="optTime" value="120" min="1"></label>
+            <label>時間上限(秒) <input type="number" id="optTime" value="300" min="1"></label>
           </div>
         </details>
-        <button class="btn primary" id="btnOpt" style="width:100%">⚡ 對目前範圍自動最佳化</button>
-        <div class="opt-msg" id="optMsg">範圍與 T<sub>g</sub>、R<sub>t</sub> 等參數都沿用本頁設定。先在終端機啟動後端：<code>./qtswe serve</code></div>
+        <button class="btn primary" id="btnOpt" style="width:100%">自動最佳化</button>
+        <div class="opt-msg" id="optMsg">請先啟動後端，再按「測試」。</div>
         <div class="opt-result" id="optResult"></div>
       </div>
 
@@ -572,8 +570,6 @@
 
     </div>
   </div>
-
-  <footer>格點座標採論文慣例（列 1–m、行 1–n）。連通性判斷：感測器與感測器、感測器與 Sink 之間，距離 ≤ Rt 視為可通訊一跳，用來估算 |CC|（僅供教學示意，非論文原始拓撲演算法）。</footer>
 </div>
 
 <script>
@@ -939,7 +935,7 @@
       <div>依 Eq.(1) 算出每台感測器對這一格的機率，再用 Eq.(3) 合成：</div>
       <table>${rows}</table>
       <div>都沒偵測到 = ${missTerms} = ${(res.contributors.reduce((acc, ct) => acc * (1 - ct.p), 1)).toFixed(3)}</div>
-      <div class="result">Pg = 1 − 上式 = ${res.value.toFixed(3)} ${res.value >= params.Tg ? '　✓ 達標' : '　✕ 未達標 T_g=' + params.Tg.toFixed(2)}</div>
+      <div class="result">Pg = 1 − 上式 = ${res.value.toFixed(3)} ${res.value >= params.Tg ? '　達標' : '　未達標 T_g=' + params.Tg.toFixed(2)}</div>
     `;
   }
 
@@ -1001,7 +997,7 @@
   const apiUrl = $('apiUrl'), apiDot = $('apiDot'), optMsg = $('optMsg'), optResult = $('optResult');
   try { const saved = localStorage.getItem('qtswe_api'); if (saved) apiUrl.value = saved; } catch (e) {}
   const apiBase = () => apiUrl.value.trim().replace(/\/+$/, '');
-  const NET_HELP = '連不到後端。請確認：① 終端機已執行 <code>./qtswe serve</code>　② 網址與埠號正確　③ 後端若不在本機，需用 https（瀏覽器會擋 https 頁面連 http 遠端）。';
+  const NET_HELP = '連不到後端。請確認後端已啟動，且網址正確。';
 
   async function ping() {
     apiDot.className = 'dot';
@@ -1010,7 +1006,7 @@
       const j = await r.json();
       apiDot.className = 'dot ' + (j.ok ? 'ok' : 'bad');
       optMsg.className = 'opt-msg';
-      optMsg.innerHTML = j.ok ? `已連線 ✓（後端 ${j.threads} 執行緒）` : NET_HELP;
+      optMsg.innerHTML = j.ok ? `已連線（${j.threads} 執行緒）` : NET_HELP;
       try { localStorage.setItem('qtswe_api', apiUrl.value.trim()); } catch (e) {}
     } catch (e) { apiDot.className = 'dot bad'; optMsg.className = 'opt-msg err'; optMsg.innerHTML = NET_HELP; }
   }
@@ -1029,7 +1025,7 @@
       rows: R, cols: C, tg: params.Tg, rcon: params.Rcon, rmax: params.Rmax, alpha: params.alpha, beta: params.beta, rt: params.Rt,
       conn: $('optConn').checked ? 1 : 0, sink_r: sink.r, sink_c: sink.c, seed: $('optSeed').value || 1,
       entangle: $('optEnt').checked ? 1 : 0, local: $('optLoc').checked ? 1 : 0,
-      pop: $('optPop').value || 100, gens: $('optGens').value || 500, time: $("optTime").value || 120
+      pop: $('optPop').value || 100, gens: $('optGens').value || 500, time: $('optTime').value || 300
     });
     panel.classList.add('busy'); btn.textContent = '計算中…（大範圍可能需要數十秒）';
     optMsg.className = 'opt-msg'; optMsg.textContent = `正在對 ${R}×${C} 搜尋最少感測器數…`; optResult.innerHTML = '';
@@ -1043,21 +1039,20 @@
       sensors = new Set(j.sensors.map(([r, c]) => r + ',' + c));
       lastOpt = j;
       recompute();
-      const tag = j.feasible ? '<span class="tag-ok">全部達標 ✓</span>' : '<span class="tag-no">未能在限制內達標（顯示目前最佳）</span>';
+      const tag = j.feasible ? '<span class="tag-ok">全部達標</span>' : '<span class="tag-no">未能在限制內達標（顯示目前最佳）</span>';
       const rows = j.attempts.map(a => `<tr><td>${a.k}</td><td class="${a.feasible ? 'tag-ok' : 'tag-no'}">${a.feasible ? '可行' : '不可行'}</td><td>${a.gens}</td><td>${a.covered}/${j.cells}</td><td>${a.seconds.toFixed(2)}s</td></tr>`).join('');
       optMsg.innerHTML = '';
       optResult.innerHTML = `
-        <div class="big">${R}×${C}、T<sub>g</sub>=${j.params.Tg}：找到的最少數量 ${j.k} 顆　${tag}</div>
-        <div>達標格點 ${j.covered}/${j.cells}　·　連通 ${j.connected}/${j.k}　·　最低 Pg ${j.pg_min.toFixed(3)}　·　耗時 ${j.seconds.toFixed(2)}s${j.timed_out ? '（達時間上限，尚未收斂，可調高「時間上限」）' : ''}</div>
-        <div style="margin-top:6px">格子上的黑點就是這個範圍的最佳化擺法；滑鼠移到格子可看計算過程。密度 ≈ 每顆守 ${(j.cells / j.k).toFixed(1)} 格（理論晶格間距 ≈ ${j.s_prop.toFixed(2)}）。</div>
+        <div class="big">${R}×${C}、T<sub>g</sub>=${j.params.Tg}：最少 ${j.k} 顆　${tag}</div>
+        <div>達標格點 ${j.covered}/${j.cells}　·　連通 ${j.connected}/${j.k}　·　最低 Pg ${j.pg_min.toFixed(3)}　·　耗時 ${j.seconds.toFixed(2)}s${j.timed_out ? '（達時間上限，可調高）' : ''}</div>
         <table><tr><th>嘗試 k</th><th>結果</th><th>世代</th><th>覆蓋</th><th>時間</th></tr>${rows}</table>
-        <div style="margin-top:8px">最後一次嘗試的適應度曲線（f = f1 + f2）：</div>${sparkline(j.curve, j.cells + j.k)}`;
+        <div style="margin-top:8px">適應度曲線（最後一次嘗試）</div>${sparkline(j.curve, j.cells + j.k)}`;
     } catch (e) {
       optMsg.className = 'opt-msg err';
       optMsg.innerHTML = (e instanceof TypeError) ? NET_HELP : ('錯誤：' + e.message);
       apiDot.className = 'dot bad';
     } finally {
-      panel.classList.remove('busy'); btn.textContent = '⚡ 對目前範圍自動最佳化';
+      panel.classList.remove('busy'); btn.textContent = '自動最佳化';
     }
   }
   $('btnOpt').addEventListener('click', runOptimize);
