@@ -390,6 +390,33 @@
   @media (max-width: 460px) {
     .stat .num { font-size: 18px; }
   }
+
+  /* ---- auto-optimise panel ---- */
+  .opt-row { display:flex; gap:8px; align-items:center; margin-bottom:10px; flex-wrap:wrap; }
+  .opt-row label { font-size:12.5px; color:var(--text-dim); }
+  .opt-row input[type="text"], .opt-row input[type="number"], .opt-row select {
+    font: inherit; font-size: 13px; padding: 6px 8px; border-radius: 8px;
+    border: 1px solid var(--border-strong); background: var(--panel); color: var(--text); min-width: 0;
+  }
+  .opt-row input[type="text"] { flex: 1 1 150px; }
+  .opt-row input[type="number"] { width: 74px; }
+  .dot { width:9px; height:9px; border-radius:50%; background: var(--text-faint); display:inline-block; }
+  .dot.ok { background:#2FB67A; } .dot.bad { background: var(--danger); }
+  details.adv { margin: 4px 0 12px; font-size: 12.5px; color: var(--text-dim); }
+  details.adv summary { cursor: pointer; margin-bottom: 8px; }
+  .opt-msg { font-size: 12.5px; color: var(--text-dim); line-height: 1.6; margin-top: 10px; }
+  .opt-msg.err { color: var(--danger); }
+  .opt-result { margin-top: 12px; font-size: 12.5px; color: var(--text-dim); }
+  .opt-result .big { font-size: 15px; color: var(--text); font-weight: 600; margin-bottom: 6px; }
+  .opt-result table { width:100%; border-collapse: collapse; font-variant-numeric: tabular-nums; margin-top:6px; }
+  .opt-result td, .opt-result th { padding: 3px 4px; text-align: right; border-bottom: 1px solid var(--border); font-weight: normal; }
+  .opt-result th { color: var(--text-faint); font-size: 11.5px; }
+  .opt-result td:first-child, .opt-result th:first-child { text-align: left; }
+  .tag-ok { color:#2FB67A; } .tag-no { color: var(--danger); }
+  .spark { width:100%; height:64px; margin-top:8px; background: var(--panel-2); border-radius:8px; }
+  #bigCanvas { display:none; width:100%; height:auto; image-rendering: pixelated; border:1px solid var(--border); border-radius:10px; background: var(--grid-empty); }
+  .busy .btn.primary { opacity:.6; pointer-events:none; }
+
 </style>
 </head>
 <body>
@@ -399,7 +426,7 @@
     <div>
       <div class="eyebrow">依論文偵測模型即時運算</div>
       <h1>感測器佈建視覺化</h1>
-      <div class="sub">點格子放攝影機，看每個角落的偵測機率 Pg 怎麼被算出來。地圖大小可自由調整（2×2 ～ 50×50，論文原始地圖即為 50×50）。滑鼠移到任一格，右側會列出這一格的完整計算過程。</div>
+      <div class="sub">點格子放攝影機，看每個角落的偵測機率 Pg 怎麼被算出來。地圖範圍可自由調整為 m×n（可手動點格子，也可按右側「自動最佳化」讓 C 後端依論文 QTSwE 演算法算出最少感測器擺法）。滑鼠移到任一格，右側會列出這一格的完整計算過程。</div>
     </div>
     <div class="cite">Eq.(1) 單一感測器偵測機率<br>Eq.(3) 多感測器機率合成<br>Kuo, Chou &amp; Chen, Computer Networks 117 (2017)</div>
   </header>
@@ -411,14 +438,15 @@
 
       <div class="size-control">
         <div class="size-top">
-          <span class="size-name">地圖大小（Section 6：論文原始地圖為 50×50 units, 1 km²）</span>
-          <span class="size-hint">拖曳滑桿，或直接輸入格數</span>
+          <span class="size-name">地圖範圍 m × n（論文原始地圖為 50×50 units, 1 km²）</span>
+          <span class="size-hint">滑桿＝正方形 2–50；或直接輸入 列 × 行（最大 1000×1000，超過 50 會改用總覽畫布）</span>
         </div>
         <div class="size-inputs">
           <input type="range" id="rSize" min="2" max="50" step="1" value="10">
           <div class="size-readout">
-            <input type="number" id="nSize" min="2" max="50" step="1" value="10">
-            <span class="mult">× <span id="nSizeEcho">10</span></span>
+            <input type="number" id="nRows" min="2" max="1000" step="1" value="10" aria-label="列數 m">
+            <span class="mult">×</span>
+            <input type="number" id="nCols" min="2" max="1000" step="1" value="10" aria-label="行數 n">
           </div>
         </div>
       </div>
@@ -431,10 +459,11 @@
         <button class="btn ghost" id="btnFail">未達標標記：開</button>
       </div>
 
-      <div class="grid-outer">
+      <div class="grid-outer" id="gridOuter">
         <div id="grid"></div>
         <svg id="lines" preserveAspectRatio="none"></svg>
       </div>
+      <canvas id="bigCanvas"></canvas>
 
       <div class="legend">
         <span>0.0</span>
@@ -446,6 +475,37 @@
 
     <!-- SIDEBAR -->
     <div class="side">
+
+      <div class="panel" id="optPanel">
+        <h2>自動最佳化 · C 後端 (QTSwE)</h2>
+        <div class="opt-row">
+          <label for="apiUrl">後端網址</label>
+          <input type="text" id="apiUrl" value="http://localhost:8080" spellcheck="false">
+          <span class="dot" id="apiDot" title="連線狀態"></span>
+          <button class="btn" id="btnPing">測試</button>
+        </div>
+        <div class="opt-row">
+          <label><input type="checkbox" id="optConn" checked> 要求連通 (|CC|=1)</label>
+          <label>seed <input type="number" id="optSeed" value="1" min="0" style="width:64px"></label>
+        </div>
+        <details class="adv">
+          <summary>進階參數 / 消融開關</summary>
+          <div class="opt-row">
+            <label><input type="checkbox" id="optEnt" checked> 糾纏初始化</label>
+            <label><input type="checkbox" id="optLoc" checked> 區域搜尋</label>
+          </div>
+          <div class="opt-row">
+            <label>族群 p <input type="number" id="optPop" value="100" min="2"></label>
+            <label>世代 <input type="number" id="optGens" value="500" min="1"></label>
+          </div>
+          <div class="opt-row">
+            <label>時間上限(秒) <input type="number" id="optTime" value="120" min="1"></label>
+          </div>
+        </details>
+        <button class="btn primary" id="btnOpt" style="width:100%">⚡ 對目前範圍自動最佳化</button>
+        <div class="opt-msg" id="optMsg">範圍與 T<sub>g</sub>、R<sub>t</sub> 等參數都沿用本頁設定。先在終端機啟動後端：<code>./qtswe serve</code></div>
+        <div class="opt-result" id="optResult"></div>
+      </div>
 
       <div class="panel">
         <h2>目前狀態</h2>
@@ -474,19 +534,19 @@
       <div class="panel">
         <h2>偵測模型參數 · Eq.(1)</h2>
         <div class="field">
-          <label>信心半徑 R<sub>con</sub> <span class="v" id="vRcon">1.41</span></label>
+          <label><span>信心半徑 R<sub>con</sub></span> <span class="v" id="vRcon">1.41</span></label>
           <input type="range" id="rRcon" min="0.5" max="4" step="0.01" value="1.414">
         </div>
         <div class="field">
-          <label>最大半徑 R<sub>max</sub> <span class="v" id="vRmax">5.0</span></label>
+          <label><span>最大半徑 R<sub>max</sub></span> <span class="v" id="vRmax">5.0</span></label>
           <input type="range" id="rRmax" min="1" max="20" step="0.1" value="5">
         </div>
         <div class="field">
-          <label>α（信心圓內偵測率） <span class="v" id="vAlpha">1.00</span></label>
+          <label><span>α（信心圓內偵測率）</span> <span class="v" id="vAlpha">1.00</span></label>
           <input type="range" id="rAlpha" min="0.3" max="1" step="0.01" value="1">
         </div>
         <div class="field">
-          <label>β（機率隨距離衰減速度） <span class="v" id="vBeta">1.0</span></label>
+          <label><span>β（機率隨距離衰減速度）</span> <span class="v" id="vBeta">1.0</span></label>
           <input type="range" id="rBeta" min="0.5" max="3" step="0.1" value="1">
         </div>
       </div>
@@ -494,11 +554,11 @@
       <div class="panel">
         <h2>限制式門檻</h2>
         <div class="field">
-          <label>偵測門檻 T<sub>g</sub> <span class="v" id="vTg">0.30</span></label>
+          <label><span>偵測門檻 T<sub>g</sub></span> <span class="v" id="vTg">0.30</span></label>
           <input type="range" id="rTg" min="0" max="1" step="0.01" value="0.3">
         </div>
         <div class="field">
-          <label>傳輸半徑 R<sub>t</sub>（連通性用） <span class="v" id="vRt">5.0</span></label>
+          <label><span>傳輸半徑 R<sub>t</sub>（連通性用）</span> <span class="v" id="vRt">5.0</span></label>
           <input type="range" id="rRt" min="1" max="20" step="0.1" value="5">
         </div>
       </div>
@@ -513,12 +573,16 @@
     </div>
   </div>
 
-  <footer>格點座標採論文慣例（1–N，N 為目前地圖邊長）。連通性判斷：感測器與感測器、感測器與 Sink 之間，距離 ≤ Rt 視為可通訊一跳，用來估算 |CC|（僅供教學示意，非論文原始拓撲演算法）。</footer>
+  <footer>格點座標採論文慣例（列 1–m、行 1–n）。連通性判斷：感測器與感測器、感測器與 Sink 之間，距離 ≤ Rt 視為可通訊一跳，用來估算 |CC|（僅供教學示意，非論文原始拓撲演算法）。</footer>
 </div>
 
 <script>
 (function () {
-  let N = 10;
+  let R = 10, C = 10;            // map = R rows x C cols
+  let sinkMoved = false;
+  let bigMode = false;           // > 50 on a side: canvas overview instead of clickable DOM grid
+  const BIG = 50;
+  let lastOpt = null;            // last backend result
   const grid = document.getElementById('grid');
   const svgLines = document.getElementById('lines');
   let cells = [];
@@ -528,8 +592,10 @@
   let showFail = true;
 
   const rSize = document.getElementById('rSize');
-  const nSize = document.getElementById('nSize');
-  const nSizeEcho = document.getElementById('nSizeEcho');
+  const nRows = document.getElementById('nRows');
+  const nCols = document.getElementById('nCols');
+  const bigCanvas = document.getElementById('bigCanvas');
+  const gridOuter = document.getElementById('gridOuter');
 
   function key(r, c) { return r + ',' + c; }
 
@@ -537,17 +603,20 @@
   function buildGrid() {
     grid.innerHTML = '';
     cells = [];
-    grid.style.gridTemplateColumns = `repeat(${N}, 1fr)`;
-    grid.style.gridTemplateRows = `repeat(${N}, 1fr)`;
-    svgLines.setAttribute('viewBox', `0 0 ${N} ${N}`);
+    if (bigMode) { gridOuter.style.display = 'none'; bigCanvas.style.display = 'block'; return; }
+    gridOuter.style.display = ''; bigCanvas.style.display = 'none';
+    gridOuter.style.aspectRatio = `${C} / ${R}`;
+    grid.style.gridTemplateColumns = `repeat(${C}, 1fr)`;
+    grid.style.gridTemplateRows = `repeat(${R}, 1fr)`;
+    svgLines.setAttribute('viewBox', `0 0 ${C} ${R}`);
 
     // scale font size down as the grid gets denser so text never overflows a cell
-    const approxCellPx = 560 / N;
+    const approxCellPx = 560 / Math.max(R, C);
     const fontPx = Math.max(5.5, Math.min(11, approxCellPx * 0.34));
     grid.style.fontSize = fontPx.toFixed(1) + 'px';
 
-    for (let r = 1; r <= N; r++) {
-      for (let c = 1; c <= N; c++) {
+    for (let r = 1; r <= R; r++) {
+      for (let c = 1; c <= C; c++) {
         const cell = document.createElement('div');
         cell.className = 'cell';
         cell.dataset.r = r;
@@ -566,14 +635,17 @@
   // above roughly this many cells per side, per-cell numbers get too small to read —
   // keep the color coding but stop printing digits (hover breakdown still works)
   function numberPrecision() {
-    if (N <= 14) return 2;
-    if (N <= 26) return 1;
+    const m = Math.max(R, C);
+    if (m <= 14) return 2;
+    if (m <= 26) return 1;
     return null;
   }
 
   function onCellClick(r, c) {
     if (sinkMode) {
       sink = { r, c };
+      sinkMoved = true;
+      sensors.delete(key(r, c));
       sinkMode = false;
       updateToolbarState();
       recompute();
@@ -592,35 +664,45 @@
     const kept = new Set();
     sensors.forEach(k => {
       const [r, c] = k.split(',').map(Number);
-      if (r <= N && c <= N) kept.add(k);
+      if (r <= R && c <= C) kept.add(k);
     });
     sensors = kept;
     // clamp sink into bounds
-    sink = { r: Math.min(sink.r, N), c: Math.min(sink.c, N) };
+    sink = sinkMoved ? { r: Math.min(sink.r, R), c: Math.min(sink.c, C) } : { r: Math.ceil(R / 2), c: Math.ceil(C / 2) };
+    sensors.delete(key(sink.r, sink.c));
   }
 
-  function applySize(newN) {
-    if (Number.isNaN(newN)) newN = N;
-    newN = Math.max(2, Math.min(50, Math.round(newN)));
-    N = newN;
-    rSize.value = N;
-    nSize.value = N;
-    nSizeEcho.textContent = N;
+  function clampDim(v, fallback) {
+    if (Number.isNaN(v)) return fallback;
+    return Math.max(2, Math.min(1000, Math.round(v)));
+  }
+  function applySize(newR, newC, opts) {
+    opts = opts || {};
+    const oldR = R, oldC = C;
+    R = clampDim(newR, R);
+    C = clampDim(newC === undefined ? newR : newC, C);
+    bigMode = R > BIG || C > BIG;
+    if (!opts.keepInputs) { nRows.value = R; nCols.value = C; }
+    if (R === C && R <= BIG) rSize.value = R;
+    if (R !== oldR || C !== oldC) lastOpt = null;      // result belonged to the old map size
     clampCoords();
     buildGrid();
     recompute();
   }
 
-  rSize.addEventListener('input', () => applySize(parseInt(rSize.value, 10)));
+  rSize.addEventListener('input', () => applySize(parseInt(rSize.value, 10), parseInt(rSize.value, 10)));
   // listen on 'input' (not just 'change') so typing or using the spinner updates the
   // grid immediately, without waiting for the field to lose focus
-  nSize.addEventListener('input', () => {
-    const v = parseInt(nSize.value, 10);
-    if (!Number.isNaN(v)) applySize(v);
-  });
-  nSize.addEventListener('change', () => applySize(parseInt(nSize.value, 10)));
-  nSize.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') { applySize(parseInt(nSize.value, 10)); nSize.blur(); }
+  function onDimInput(commit) {
+    const r = parseInt(nRows.value, 10), c = parseInt(nCols.value, 10);
+    if (Number.isNaN(r) || Number.isNaN(c)) return;
+    if (!commit && (r < 2 || c < 2)) return;
+    applySize(r, c, { keepInputs: !commit });
+  }
+  [nRows, nCols].forEach(el => {
+    el.addEventListener('input', () => onDimInput(false));
+    el.addEventListener('change', () => onDimInput(true));
+    el.addEventListener('keydown', (e) => { if (e.key === 'Enter') { onDimInput(true); el.blur(); } });
   });
 
   // ---- params ----
@@ -737,6 +819,7 @@
 
   // ---- render ----
   function recompute() {
+    if (bigMode) { renderBig(); return; }
     const prec = numberPrecision();
     let total = 0, pass = 0, count = 0;
     cells.forEach(cell => {
@@ -786,7 +869,7 @@
 
     // lines
     svgLines.innerHTML = '';
-    const strokeW = Math.max(0.02, N * 0.006);
+    const strokeW = Math.max(0.02, Math.max(R, C) * 0.006);
     conn.edges.forEach(([a, b]) => {
       const isIsolatedEdge = conn.isolated.has(a.key) || conn.isolated.has(b.key);
       const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
@@ -860,11 +943,130 @@
     `;
   }
 
+  // ---- large-map overview (canvas) ----
+  const lut = Array.from({ length: 256 }, (_, i) => hexToRgb(colorFor(i / 255)));
+  function renderBig() {
+    const px = Math.max(1, Math.min(8, Math.floor(800 / Math.max(R, C))));
+    bigCanvas.width = C * px; bigCanvas.height = R * px;
+    const ctx = bigCanvas.getContext('2d');
+    const miss = new Float64Array(R * C).fill(1);
+    const rad = Math.ceil(params.Rmax), foot = [];
+    for (let dr = -rad; dr <= rad; dr++) for (let dc = -rad; dc <= rad; dc++) {
+      const p = psg(Math.hypot(dr, dc));
+      if (p > 0) foot.push([dr, dc, 1 - Math.min(1, p)]);
+    }
+    sensors.forEach(k => {
+      const [sr, sc] = k.split(',').map(Number);
+      for (const [dr, dc, m] of foot) {
+        const r = sr - 1 + dr, c = sc - 1 + dc;
+        if (r < 0 || c < 0 || r >= R || c >= C) continue;
+        miss[r * C + c] *= m;
+      }
+    });
+    const img = ctx.createImageData(C * px, R * px), d = img.data;
+    let pass = 0, tot = 0;
+    for (let r = 0; r < R; r++) for (let c = 0; c < C; c++) {
+      const v = 1 - miss[r * C + c];
+      if (v >= params.Tg - 1e-9) pass++;
+      tot += v;
+      const col = lut[Math.max(0, Math.min(255, Math.round(v * 255)))];
+      for (let y = 0; y < px; y++) for (let x = 0; x < px; x++) {
+        const o = ((r * px + y) * C * px + c * px + x) * 4;
+        d[o] = col[0]; d[o + 1] = col[1]; d[o + 2] = col[2]; d[o + 3] = 255;
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+    const dot = Math.max(px, 3), cs = getComputedStyle(document.documentElement);
+    ctx.fillStyle = '#12161F';
+    sensors.forEach(k => {
+      const [sr, sc] = k.split(',').map(Number);
+      ctx.fillRect((sc - 1) * px + px / 2 - dot / 2, (sr - 1) * px + px / 2 - dot / 2, dot, dot);
+    });
+    ctx.fillStyle = cs.getPropertyValue('--sink').trim() || '#2159C7';
+    ctx.fillRect((sink.c - 1) * px + px / 2 - dot, (sink.r - 1) * px + px / 2 - dot, dot * 2, dot * 2);
+
+    document.getElementById('statSensors').textContent = sensors.size;
+    const satPct = Math.round(pass / (R * C) * 100);
+    const satEl = document.getElementById('statSat');
+    satEl.textContent = satPct + '%';
+    satEl.className = 'num ' + (satPct === 100 ? 'ok' : (satPct < 60 ? 'warn' : ''));
+    document.getElementById('statAvg').textContent = (tot / (R * C)).toFixed(2);
+    const ccEl = document.getElementById('statCC');
+    if (lastOpt) { const all = lastOpt.connected === lastOpt.k; ccEl.textContent = all ? '1' : '>1'; ccEl.className = 'num ' + (all ? 'ok' : 'warn'); }
+    else { ccEl.textContent = '—'; ccEl.className = 'num'; }
+  }
+
+  // ---- auto-optimise via the C backend ----
+  const $ = (id) => document.getElementById(id);
+  const apiUrl = $('apiUrl'), apiDot = $('apiDot'), optMsg = $('optMsg'), optResult = $('optResult');
+  try { const saved = localStorage.getItem('qtswe_api'); if (saved) apiUrl.value = saved; } catch (e) {}
+  const apiBase = () => apiUrl.value.trim().replace(/\/+$/, '');
+  const NET_HELP = '連不到後端。請確認：① 終端機已執行 <code>./qtswe serve</code>　② 網址與埠號正確　③ 後端若不在本機，需用 https（瀏覽器會擋 https 頁面連 http 遠端）。';
+
+  async function ping() {
+    apiDot.className = 'dot';
+    try {
+      const r = await fetch(apiBase() + '/health', { cache: 'no-store' });
+      const j = await r.json();
+      apiDot.className = 'dot ' + (j.ok ? 'ok' : 'bad');
+      optMsg.className = 'opt-msg';
+      optMsg.innerHTML = j.ok ? `已連線 ✓（後端 ${j.threads} 執行緒）` : NET_HELP;
+      try { localStorage.setItem('qtswe_api', apiUrl.value.trim()); } catch (e) {}
+    } catch (e) { apiDot.className = 'dot bad'; optMsg.className = 'opt-msg err'; optMsg.innerHTML = NET_HELP; }
+  }
+  $('btnPing').addEventListener('click', ping);
+
+  function sparkline(curve, maxF) {
+    if (!curve || curve.length < 2) return '';
+    const lo = Math.min(...curve), hi = Math.max(maxF, ...curve), W = 300, H = 60;
+    const pts = curve.map((v, i) => `${(i / (curve.length - 1) * W).toFixed(1)},${(H - 4 - (v - lo) / Math.max(1e-9, hi - lo) * (H - 8)).toFixed(1)}`).join(' ');
+    return `<svg class="spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none"><polyline points="${pts}" fill="none" stroke="var(--accent)" stroke-width="1.6" vector-effect="non-scaling-stroke"/></svg>`;
+  }
+
+  async function runOptimize() {
+    const panel = $('optPanel'), btn = $('btnOpt');
+    const q = new URLSearchParams({
+      rows: R, cols: C, tg: params.Tg, rcon: params.Rcon, rmax: params.Rmax, alpha: params.alpha, beta: params.beta, rt: params.Rt,
+      conn: $('optConn').checked ? 1 : 0, sink_r: sink.r, sink_c: sink.c, seed: $('optSeed').value || 1,
+      entangle: $('optEnt').checked ? 1 : 0, local: $('optLoc').checked ? 1 : 0,
+      pop: $('optPop').value || 100, gens: $('optGens').value || 500, time: $("optTime").value || 120
+    });
+    panel.classList.add('busy'); btn.textContent = '計算中…（大範圍可能需要數十秒）';
+    optMsg.className = 'opt-msg'; optMsg.textContent = `正在對 ${R}×${C} 搜尋最少感測器數…`; optResult.innerHTML = '';
+    try {
+      const resp = await fetch(apiBase() + '/optimize?' + q.toString(), { cache: 'no-store' });
+      const j = await resp.json();
+      if (!j.ok) throw new Error(j.error || '後端回傳錯誤');
+      apiDot.className = 'dot ok';
+      try { localStorage.setItem('qtswe_api', apiUrl.value.trim()); } catch (e) {}
+      sink = { r: j.sink[0], c: j.sink[1] };
+      sensors = new Set(j.sensors.map(([r, c]) => r + ',' + c));
+      lastOpt = j;
+      recompute();
+      const tag = j.feasible ? '<span class="tag-ok">全部達標 ✓</span>' : '<span class="tag-no">未能在限制內達標（顯示目前最佳）</span>';
+      const rows = j.attempts.map(a => `<tr><td>${a.k}</td><td class="${a.feasible ? 'tag-ok' : 'tag-no'}">${a.feasible ? '可行' : '不可行'}</td><td>${a.gens}</td><td>${a.covered}/${j.cells}</td><td>${a.seconds.toFixed(2)}s</td></tr>`).join('');
+      optMsg.innerHTML = '';
+      optResult.innerHTML = `
+        <div class="big">${R}×${C}、T<sub>g</sub>=${j.params.Tg}：找到的最少數量 ${j.k} 顆　${tag}</div>
+        <div>達標格點 ${j.covered}/${j.cells}　·　連通 ${j.connected}/${j.k}　·　最低 Pg ${j.pg_min.toFixed(3)}　·　耗時 ${j.seconds.toFixed(2)}s${j.timed_out ? '（達時間上限，尚未收斂，可調高「時間上限」）' : ''}</div>
+        <div style="margin-top:6px">格子上的黑點就是這個範圍的最佳化擺法；滑鼠移到格子可看計算過程。密度 ≈ 每顆守 ${(j.cells / j.k).toFixed(1)} 格（理論晶格間距 ≈ ${j.s_prop.toFixed(2)}）。</div>
+        <table><tr><th>嘗試 k</th><th>結果</th><th>世代</th><th>覆蓋</th><th>時間</th></tr>${rows}</table>
+        <div style="margin-top:8px">最後一次嘗試的適應度曲線（f = f1 + f2）：</div>${sparkline(j.curve, j.cells + j.k)}`;
+    } catch (e) {
+      optMsg.className = 'opt-msg err';
+      optMsg.innerHTML = (e instanceof TypeError) ? NET_HELP : ('錯誤：' + e.message);
+      apiDot.className = 'dot bad';
+    } finally {
+      panel.classList.remove('busy'); btn.textContent = '⚡ 對目前範圍自動最佳化';
+    }
+  }
+  $('btnOpt').addEventListener('click', runOptimize);
+
   // ---- toolbar ----
   document.getElementById('btnClear').addEventListener('click', () => { sensors.clear(); recompute(); });
   document.getElementById('btnPreset').addEventListener('click', () => {
-    applySize(10);
-    sink = { r: 5, c: 5 };
+    applySize(10, 10);
+    sink = { r: 5, c: 5 }; sinkMoved = false;
     sensors = new Set(['3,3', '3,8', '8,3', '8,8']);
     params.Tg = 0.3; document.getElementById('rTg').value = 0.3; document.getElementById('vTg').textContent = '0.30';
     recompute();
