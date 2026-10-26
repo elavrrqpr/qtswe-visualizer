@@ -475,7 +475,7 @@
     <div class="side">
 
       <div class="panel" id="optPanel">
-        <h2>自動最佳化 · (QTSwE)</h2>
+        <h2>自動最佳化 · C 後端 (QTSwE)</h2>
         <div class="opt-row">
           <label for="apiUrl">後端網址</label>
           <input type="text" id="apiUrl" value="http://localhost:8080" spellcheck="false">
@@ -491,6 +491,14 @@
           <div class="opt-row">
             <label><input type="checkbox" id="optEnt" checked> 糾纏初始化</label>
             <label><input type="checkbox" id="optLoc" checked> 區域搜尋</label>
+          </div>
+          <div class="opt-row">
+            <label><input type="checkbox" id="optSaA"> 退火接受：參考解 (A)</label>
+            <label><input type="checkbox" id="optSaB"> 退火接受：區域搜尋 (B)</label>
+          </div>
+          <div class="opt-row">
+            <label>起始溫度 T<sub>0</sub> <input type="number" id="optT0" value="2" min="0.01" step="0.1"></label>
+            <label>結束溫度 <input type="number" id="optTend" value="0.1" min="0.01" step="0.05"></label>
           </div>
           <div class="opt-row">
             <label>族群 p <input type="number" id="optPop" value="100" min="2"></label>
@@ -1025,6 +1033,8 @@
       rows: R, cols: C, tg: params.Tg, rcon: params.Rcon, rmax: params.Rmax, alpha: params.alpha, beta: params.beta, rt: params.Rt,
       conn: $('optConn').checked ? 1 : 0, sink_r: sink.r, sink_c: sink.c, seed: $('optSeed').value || 1,
       entangle: $('optEnt').checked ? 1 : 0, local: $('optLoc').checked ? 1 : 0,
+      sa_ref: $('optSaA').checked ? 1 : 0, sa_ls: $('optSaB').checked ? 1 : 0,
+      sa_t0: $('optT0').value || 2, sa_tend: $('optTend').value || 0.1,
       pop: $('optPop').value || 100, gens: $('optGens').value || 500, time: $('optTime').value || 300
     });
     panel.classList.add('busy'); btn.textContent = '計算中…（大範圍可能需要數十秒）';
