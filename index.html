@@ -485,6 +485,7 @@
         <div class="opt-row">
           <label><input type="checkbox" id="optConn" checked> 要求連通 (|CC|=1)</label>
           <label>seed <input type="number" id="optSeed" value="1" min="0" style="width:64px"></label>
+          <label title="相同設定（含 seed）已算過時，直接讀取結果；勾選則強制重算"><input type="checkbox" id="optNoCache"> 強制重算</label>
         </div>
         <details class="adv">
           <summary>進階參數 / 消融開關</summary>
@@ -1035,7 +1036,7 @@
       entangle: $('optEnt').checked ? 1 : 0, local: $('optLoc').checked ? 1 : 0,
       sa_ref: $('optSaA').checked ? 1 : 0, sa_ls: $('optSaB').checked ? 1 : 0,
       sa_t0: $('optT0').value || 2, sa_tend: $('optTend').value || 0.1,
-      pop: $('optPop').value || 100, gens: $('optGens').value || 500, time: $('optTime').value || 300
+      nocache: $('optNoCache').checked ? 1 : 0, pop: $('optPop').value || 100, gens: $('optGens').value || 500, time: $('optTime').value || 300
     });
     panel.classList.add('busy'); btn.textContent = '計算中…（大範圍可能需要數十秒）';
     optMsg.className = 'opt-msg'; optMsg.textContent = `正在對 ${R}×${C} 搜尋最少感測器數…`; optResult.innerHTML = '';
@@ -1054,7 +1055,7 @@
       optMsg.innerHTML = '';
       optResult.innerHTML = `
         <div class="big">${R}×${C}、T<sub>g</sub>=${j.params.Tg}：最少 ${j.k} 顆　${tag}</div>
-        <div>達標格點 ${j.covered}/${j.cells}${j.params.conn ? `　·　連通 ${j.connected}/${j.k}` : '　·　未要求連通'}　·　最低 Pg ${j.pg_min.toFixed(3)}　·　耗時 ${j.seconds.toFixed(2)}s${j.timed_out ? '（達時間上限，可調高）' : ''}</div>
+        <div>達標格點 ${j.covered}/${j.cells}${j.params.conn ? `　·　連通 ${j.connected}/${j.k}` : '　·　未要求連通'}　·　最低 Pg ${j.pg_min.toFixed(3)}　·　${j.cached ? `快取命中（原計算耗時 ${j.seconds.toFixed(2)}s，本次即時載入）` : `耗時 ${j.seconds.toFixed(2)}s`}${j.timed_out ? '（達時間上限，可調高）' : ''}</div>
         <table><tr><th>嘗試 k</th><th>結果</th><th>世代</th><th>覆蓋</th><th>時間</th></tr>${rows}</table>
         <div style="margin-top:8px">適應度曲線（最後一次嘗試）</div>${sparkline(j.curve, j.cells + j.k)}`;
     } catch (e) {
