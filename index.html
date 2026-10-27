@@ -1054,7 +1054,7 @@
       optMsg.innerHTML = '';
       optResult.innerHTML = `
         <div class="big">${R}×${C}、T<sub>g</sub>=${j.params.Tg}：最少 ${j.k} 顆　${tag}</div>
-        <div>達標格點 ${j.covered}/${j.cells}　·　連通 ${j.connected}/${j.k}　·　最低 Pg ${j.pg_min.toFixed(3)}　·　耗時 ${j.seconds.toFixed(2)}s${j.timed_out ? '（達時間上限，可調高）' : ''}</div>
+        <div>達標格點 ${j.covered}/${j.cells}${j.params.conn ? `　·　連通 ${j.connected}/${j.k}` : '　·　未要求連通'}　·　最低 Pg ${j.pg_min.toFixed(3)}　·　耗時 ${j.seconds.toFixed(2)}s${j.timed_out ? '（達時間上限，可調高）' : ''}</div>
         <table><tr><th>嘗試 k</th><th>結果</th><th>世代</th><th>覆蓋</th><th>時間</th></tr>${rows}</table>
         <div style="margin-top:8px">適應度曲線（最後一次嘗試）</div>${sparkline(j.curve, j.cells + j.k)}`;
     } catch (e) {
