@@ -453,9 +453,15 @@
         <button class="btn primary" id="btnClear">清空感測器</button>
         <button class="btn" id="btnPreset" title="會自動把地圖切回 10×10，再套用論文範例位置">還原論文 Fig.5(a)</button>
         <button class="btn" id="btnSink">移動 Sink</button>
+        <button class="btn" id="btnExport" title="把目前的感測器位置、Sink 與參數存成 JSON 檔">匯出 JSON</button>
+        <button class="btn" id="btnExportCsv" title="只匯出感測器座標（列,行，從 1 開始），可用 Excel 開啟">匯出 CSV</button>
+        <button class="btn" id="btnImport" title="讀取先前匯出的 JSON，或只含座標的 CSV">匯入</button>
+        <input type="file" id="fileImport" accept=".json,.csv,application/json,text/csv" hidden>
         <div class="spacer"></div>
         <button class="btn ghost" id="btnFail">未達標標記：開</button>
       </div>
+
+      <div id="ioMsg" class="opt-msg" style="margin:-6px 0 10px"></div>
 
       <div class="grid-outer" id="gridOuter">
         <div id="grid"></div>
@@ -1093,6 +1099,140 @@
     showFail = !showFail;
     btnFail.textContent = '未達標標記：' + (showFail ? '開' : '關');
     recompute();
+  });
+
+  // ---- layout export / import ----
+  // JSON: { format:'qtswe-layout', version:1, map:{rows,cols}, sink:{r,c}, params, sensors:[[r,c]...], optimize? }
+  // coordinates are 1-indexed (row, col), same as the grid on screen.
+  const ioMsg = document.getElementById('ioMsg');
+  function ioNote(text, isErr) { ioMsg.textContent = text; ioMsg.className = 'opt-msg' + (isErr ? ' err' : ''); }
+  function sortedSensors() {
+    return Array.from(sensors).map(k => k.split(',').map(Number)).sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  }
+  function sameAsLastOpt() {
+    if (!lastOpt || !lastOpt.sensors || lastOpt.sensors.length !== sensors.size) return false;
+    return lastOpt.sensors.every(([r, c]) => sensors.has(r + ',' + c));
+  }
+  function download(name, text, type) {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([text], { type }));
+    a.download = name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }
+  function stamp() {
+    const d = new Date(), p = n => String(n).padStart(2, '0');
+    return d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + '_' + p(d.getHours()) + p(d.getMinutes());
+  }
+  function exportLayout(kind) {
+    const list = sortedSensors();
+    if (!list.length) { ioNote('目前沒有感測器可以匯出', true); return; }
+    const base = 'layout_' + R + 'x' + C + '_k' + list.length + '_' + stamp();
+    if (kind === 'csv') {
+      download(base + '.csv', 'row,col\n' + list.map(p => p[0] + ',' + p[1]).join('\n') + '\n', 'text/csv');
+    } else {
+      const doc = {
+        format: 'qtswe-layout', version: 1, coordinates: '1-indexed (row, col)',
+        map: { rows: R, cols: C }, sink: { r: sink.r, c: sink.c }, params: Object.assign({}, params),
+        k: list.length, sensors: list, exportedAt: new Date().toISOString()
+      };
+      if (sameAsLastOpt()) doc.optimize = Object.assign({ seconds: lastOpt.seconds, feasible: lastOpt.feasible }, lastOpt.params);
+      download(base + '.json', JSON.stringify(doc), 'application/json');
+    }
+    ioNote('已匯出 ' + list.length + ' 顆感測器', false);
+  }
+
+  function parseLayoutText(name, text) {
+    if (/\.csv$/i.test(name) || !/^\s*[{\[]/.test(text)) {
+      const pts = [];
+      text.split(/\r?\n/).forEach(line => {
+        const m = line.trim().replace(/^﻿/, '').match(/^(\d+)\s*[,;\t ]\s*(\d+)$/);
+        if (m) pts.push([+m[1], +m[2]]);
+      });
+      if (!pts.length) throw new Error('CSV 中找不到「列,行」座標（從 1 開始的整數）');
+      return { sensors: pts };
+    }
+    const d = JSON.parse(text);
+    if (!d || d.format !== 'qtswe-layout') throw new Error('不是 qtswe-layout 檔案');
+    if (d.version !== 1) throw new Error('不支援的版本：' + d.version);
+    if (!d.map || !Array.isArray(d.sensors)) throw new Error('缺少 map 或 sensors');
+    return d;
+  }
+
+  function setSlider(id, v) {
+    const el = document.getElementById(id);
+    if (!el || typeof v !== 'number' || !isFinite(v)) return;
+    el.value = Math.min(parseFloat(el.max), Math.max(parseFloat(el.min), v));
+    el.dispatchEvent(new Event('input'));
+  }
+  const OPT_CHECKS = { optConn: 'conn', optEnt: 'entangle', optLoc: 'local', optSaA: 'sa_ref', optSaB: 'sa_ls' };
+  const OPT_FIELDS = { optSeed: 'seed', optT0: 'sa_T0', optTend: 'sa_Tend', optPop: 'pop', optGens: 'gens' };
+
+  function applyLayout(d) {
+    const pts = [], seen = new Set(); let dup = 0, bad = 0, maxR = 0, maxC = 0;
+    d.sensors.forEach(p => {
+      if (!Array.isArray(p) || p.length !== 2 || !Number.isInteger(p[0]) || !Number.isInteger(p[1]) || p[0] < 1 || p[1] < 1) { bad++; return; }
+      const k = p[0] + ',' + p[1];
+      if (seen.has(k)) { dup++; return; }
+      seen.add(k); pts.push(p);
+      if (p[0] > maxR) maxR = p[0];
+      if (p[1] > maxC) maxC = p[1];
+    });
+    if (!pts.length) throw new Error('沒有有效的感測器座標');
+
+    let rows, cols, grown = false;
+    if (d.map) {
+      rows = d.map.rows; cols = d.map.cols;
+      if (!Number.isInteger(rows) || !Number.isInteger(cols) || rows < 2 || cols < 2 || rows > 1000 || cols > 1000) throw new Error('地圖大小需為 2–1000 的整數');
+      if (maxR > rows || maxC > cols) throw new Error('座標超出檔案內宣告的地圖（' + rows + '×' + cols + '）');
+    } else {                                   // CSV: keep current map, grow it if the points do not fit
+      rows = Math.max(R, maxR, 2); cols = Math.max(C, maxC, 2);
+      grown = rows !== R || cols !== C;
+      if (rows > 1000 || cols > 1000) throw new Error('座標超出上限 1000');
+    }
+
+    const notes = [];
+    applySize(rows, cols);
+    sensors = new Set();
+    if (d.sink && Number.isInteger(d.sink.r) && Number.isInteger(d.sink.c) && d.sink.r >= 1 && d.sink.c >= 1 && d.sink.r <= rows && d.sink.c <= cols) {
+      sink = { r: d.sink.r, c: d.sink.c }; sinkMoved = true;
+    }
+    lastOpt = null; optResult.innerHTML = ''; optMsg.textContent = '';
+    if (d.params && typeof d.params === 'object') {      // set before the sensors so each slider update stays cheap
+      setSlider('rRcon', d.params.Rcon); setSlider('rRmax', d.params.Rmax); setSlider('rAlpha', d.params.alpha);
+      setSlider('rBeta', d.params.beta); setSlider('rTg', d.params.Tg); setSlider('rRt', d.params.Rt);
+    }
+    if (d.optimize && typeof d.optimize === 'object') {
+      Object.keys(OPT_CHECKS).forEach(id => { const v = d.optimize[OPT_CHECKS[id]]; if (v === 0 || v === 1) $(id).checked = v === 1; });
+      Object.keys(OPT_FIELDS).forEach(id => { const v = d.optimize[OPT_FIELDS[id]]; if (typeof v === 'number' && isFinite(v)) $(id).value = v; });
+    }
+    let onSink = 0;
+    sensors = new Set();
+    pts.forEach(p => { if (p[0] === sink.r && p[1] === sink.c) onSink++; else sensors.add(p[0] + ',' + p[1]); });
+    recompute();
+
+    let msg = '已匯入 ' + sensors.size + ' 顆感測器（' + rows + '×' + cols + '）';
+    if (grown) notes.push('地圖已放大以容納座標');
+    if (dup) notes.push('略過 ' + dup + ' 個重複座標');
+    if (bad) notes.push('略過 ' + bad + ' 個無效座標');
+    if (onSink) notes.push(onSink + ' 個座標與 Sink 重疊，已略過');
+    return notes.length ? msg + '；' + notes.join('；') : msg;
+  }
+
+  const fileImport = document.getElementById('fileImport');
+  document.getElementById('btnExport').addEventListener('click', () => exportLayout('json'));
+  document.getElementById('btnExportCsv').addEventListener('click', () => exportLayout('csv'));
+  document.getElementById('btnImport').addEventListener('click', () => fileImport.click());
+  fileImport.addEventListener('change', () => {
+    const f = fileImport.files[0]; fileImport.value = '';
+    if (!f) return;
+    if (f.size > 50e6) { ioNote('檔案太大（上限 50 MB）', true); return; }
+    const rd = new FileReader();
+    rd.onload = () => {
+      try { ioNote(applyLayout(parseLayoutText(f.name, String(rd.result))), false); }
+      catch (e) { ioNote('匯入失敗：' + e.message, true); }
+    };
+    rd.onerror = () => ioNote('讀取檔案失敗', true);
+    rd.readAsText(f);
   });
 
   // ---- init ----
